@@ -13,31 +13,58 @@ namespace Paradox
             var inputs = new double[,] { { 0, 1, 1 }, { 0, 0, 0 }, { 1, 0, 1 } };
             var outputs = new[] { 0, 1, 0 };
 
-            var perceptron = new Perceptron(inputs, outputs);
-            var weights = perceptron.CalculateWeigths();
+            var training = new PerceptronTraining(inputs, outputs);
+            var weights = training.Weigths();
+
+            foreach (var weight in weights)
+            {
+                Console.WriteLine($"Weight: {weight}");
+            }
+
+            var perceptron = new Perceptron(weights);
 
             for (int i = 0; i < inputs.GetLength(0); i++)
             {
                 var row = inputs.GetRow(i);
-                Console.WriteLine(perceptron.Calculate(row, weights));
+                Console.WriteLine(perceptron.Calculate(row));
             }
 
             Console.ReadLine();
+        }
+
+        public static void Training()
+        {
         }
     }
 
     public class Perceptron
     {
+        public double[] Weights { get; }
+
+        public Perceptron(double[] weights)
+        {
+            this.Weights = weights;
+        }
+
+        public int Calculate(double[] inputs)
+        {
+            var sum = inputs.Zip(this.Weights, (input, weigth) => input * weigth).Sum();
+            return sum >= 0 ? 1 : 0;
+        }
+    }
+
+    public class PerceptronTraining
+    {
         public double[,] Inputs { get; }
         public int[] Outputs { get; }
 
-        public Perceptron(double[,] inputs, int[] outputs)
+        public PerceptronTraining(double[,] inputs, int[] outputs)
         {
             this.Inputs = inputs;
             this.Outputs = outputs;
         }
 
-        public double[] CalculateWeigths()
+        public double[] Weigths()
         {
             var rowSize = this.Inputs.GetLength(0);
             var columnSize = this.Inputs.GetLength(1);
@@ -48,14 +75,14 @@ namespace Paradox
             var learningRate = 1.0D;
             var totalError = 1.0D;
 
-            while (totalError > 0.2D)
+            while (totalError > 0D)
             {
                 totalError = 0;
                 for (int i = 0; i < rowSize; i++)
                 {
                     double[] row = this.Inputs.GetRow(i);
 
-                    int output = this.Calculate(row, weights);
+                    int output = new Perceptron(weights).Calculate(row);
                     int error = this.Outputs[i] - output;
 
                     for (var j = 0; j < weights.Length; j++)
@@ -69,12 +96,6 @@ namespace Paradox
             }
 
             return weights;
-        }
-
-        public int Calculate(double[] inputs, double[] weights)
-        {
-            var sum = inputs.Zip(weights, (input, weigth) => input * weigth).Sum();
-            return sum >= 0 ? 1 : 0;
         }
     }
 
