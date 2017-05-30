@@ -26,18 +26,16 @@ namespace Paradox
 
                 var imageWithoutBorder = ChangeColor(originalImg.Clone(), new Rgb(0D, 0D, 0D), new Rgb(255D, 255D, 255D));
 
-                //CvInvoke.PyrMeanShiftFiltering(imageWithoutBorder, imageWithoutBorder, 10, 10, 1, new MCvTermCriteria(5, 2));
-
                 var imageGray = imageWithoutBorder.Clone();
                 CvInvoke.CvtColor(imageWithoutBorder, imageGray, ColorConversion.Bgr2Gray);
 
                 var nucleusImageBinary = new Mat();
                 CvInvoke.Threshold(imageGray, nucleusImageBinary, 100, 255, ThresholdType.Binary);
 
-                var nucleusImageBinaryRev = new Mat();
-                CvInvoke.Threshold(nucleusImageBinary, nucleusImageBinaryRev, 254, 255, ThresholdType.BinaryInv);
+                var nucleusImageBinaryInv = new Mat();
+                CvInvoke.Threshold(nucleusImageBinary, nucleusImageBinaryInv, 254, 255, ThresholdType.BinaryInv);
 
-                var imgOut = nucleusImageBinaryRev.Clone();
+                var imgOut = nucleusImageBinaryInv.Clone();
                 var element = CvInvoke.GetStructuringElement(ElementShape.Rectangle, new Size(3, 3), new Point(2, 2));
                 CvInvoke.MorphologyEx(imgOut, imgOut, MorphOp.Erode, element, default(Point), 1, BorderType.Constant, new MCvScalar(0, 0));
                 CvInvoke.MorphologyEx(imgOut, imgOut, MorphOp.Dilate, element, default(Point), 1, BorderType.Constant, new MCvScalar(0, 0));
@@ -52,12 +50,12 @@ namespace Paradox
                     nucleusArea += CvInvoke.ContourArea(nucleuses[i]);
                 }
 
-                var cytoplasmImage = new Mat();
-                CvInvoke.CvtColor(imageWithoutBorder, cytoplasmImage, ColorConversion.Bgr2Gray);
-                CvInvoke.Threshold(cytoplasmImage, cytoplasmImage, 160, 255, ThresholdType.BinaryInv);
+                var cytoplasmImageInv = new Mat();
+                CvInvoke.CvtColor(imageWithoutBorder, cytoplasmImageInv, ColorConversion.Bgr2Gray);
+                CvInvoke.Threshold(cytoplasmImageInv, cytoplasmImageInv, 160, 255, ThresholdType.BinaryInv);
 
                 var cytoplasmContours = new VectorOfVectorOfPoint();
-                CvInvoke.FindContours(cytoplasmImage, cytoplasmContours, null, RetrType.List, ChainApproxMethod.ChainApproxSimple);
+                CvInvoke.FindContours(cytoplasmImageInv, cytoplasmContours, null, RetrType.List, ChainApproxMethod.ChainApproxSimple);
                 var cytoplasmArea = 0D;
 
                 for (var i = 0; i < cytoplasmContours.Size; i++)
@@ -77,11 +75,10 @@ namespace Paradox
 
                 var category = perceptron.Calculate(characteristics) == 1 ? "Neutrófilo" : "Linfócito";
 
-                Console.WriteLine(Path.GetFileName(fileName));
-                Console.WriteLine($"- Circular = {isCircular}");
+                Console.WriteLine($"{Path.GetFileName(fileName)} = {category}");
+                Console.WriteLine($"- Circular = {(isCircular ? "Sim" : "Não")}");
                 Console.WriteLine($"- Núcleos = {nucleuses.Size}");
                 Console.WriteLine($"- Área ocupada = {nucleusPercentFromCytoplasm}");
-                Console.WriteLine(category);
                 Console.WriteLine();
             }
 
@@ -98,7 +95,6 @@ namespace Paradox
                 {
                     var currentColor = image[i, j];
 
-                    //if (currentColor.Blue == oldColor.Blue && currentColor.Green == oldColor.Green && currentColor.Red == oldColor.Red)
                     if (currentColor.Equals(oldColor))
                     {
                         image[i, j] = newColor;
@@ -122,7 +118,7 @@ namespace Paradox
             CvInvoke.Threshold(nucleusImage, nucleusImage, 254, 255, ThresholdType.BinaryInv);
             CvInvoke.DrawContours(nucleusImage, nucleus, -1, new MCvScalar(0, 0, 255), -1);
 
-            var circles = CvInvoke.HoughCircles(nucleusImage, HoughType.Gradient, 10, 100, 100, 120);
+            var circles = CvInvoke.HoughCircles(nucleusImage, HoughType.Gradient, 10, 100, 100, 64);
 
             return circles.Length > 0;
         }
@@ -134,31 +130,6 @@ namespace Paradox
 
             return new PerceptronTraining(inputs, outputs).Trained();
         }
-
-        //public static void TestPerceptron()
-        //{
-        //    var inputs = new double[,] { { 1, 0, 1 }, { 0, 1, 0 } };
-        //    var outputs = new[] { 0, 1 };
-
-        //    var training = new PerceptronTraining(inputs, outputs);
-        //    var weights = training.Weigths();
-
-        //    foreach (var weight in weights)
-        //    {
-        //        Console.WriteLine($"Weight: {weight}");
-        //    }
-
-        //    var perceptron = new Perceptron(weights);
-
-        //    for (int i = 0; i < inputs.GetLength(0); i++)
-        //    {
-        //        var row = inputs.GetRow(i);
-        //        Console.WriteLine(perceptron.Calculate(row));
-        //    }
-
-        //    Console.WriteLine("Fim...");
-        //    Console.ReadLine();
-        //}
     }
 
     public class Perceptron
