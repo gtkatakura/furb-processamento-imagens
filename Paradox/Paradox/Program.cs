@@ -3,6 +3,13 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Emgu.CV;
+using Emgu.CV.Structure;
+using Emgu.CV.CvEnum;
+using System.Drawing;
+using System.IO;
+using Emgu.CV.Util;
+using Emgu.CV.Features2D;
 
 namespace Paradox
 {
@@ -10,31 +17,148 @@ namespace Paradox
     {
         public static void Main(string[] args)
         {
-            var inputs = new double[,] { { 0, 1, 1 }, { 0, 0, 0 }, { 1, 0, 1 } };
-            var outputs = new[] { 0, 1, 0 };
+            var perceptron = TrainingPerceptron();
+            var directoryName = @"C:\Users\Gabriel\Downloads\dataset_geral";
 
-            var training = new PerceptronTraining(inputs, outputs);
-            var weights = training.Weigths();
-
-            foreach (var weight in weights)
+            foreach (var fileName in Directory.GetFiles(directoryName))
             {
-                Console.WriteLine($"Weight: {weight}");
-            }
+                var originalImg = CvInvoke.Imread(fileName, LoadImageType.AnyColor);
 
-            var perceptron = new Perceptron(weights);
+                var imageWithoutBorder = ChangeColor(originalImg.Clone(), new Rgb(0D, 0D, 0D), new Rgb(255D, 255D, 255D));
 
-            for (int i = 0; i < inputs.GetLength(0); i++)
-            {
-                var row = inputs.GetRow(i);
-                Console.WriteLine(perceptron.Calculate(row));
+                //CvInvoke.PyrMeanShiftFiltering(imageWithoutBorder, imageWithoutBorder, 10, 10, 1, new MCvTermCriteria(5, 2));
+
+                var imageGray = imageWithoutBorder.Clone();
+                CvInvoke.CvtColor(imageWithoutBorder, imageGray, ColorConversion.Bgr2Gray);
+
+                var nucleusImageBinary = new Mat();
+                CvInvoke.Threshold(imageGray, nucleusImageBinary, 100, 255, ThresholdType.Binary);
+
+                var nucleusImageBinaryRev = new Mat();
+                CvInvoke.Threshold(nucleusImageBinary, nucleusImageBinaryRev, 254, 255, ThresholdType.BinaryInv);
+
+                var imgOut = nucleusImageBinaryRev.Clone();
+                var element = CvInvoke.GetStructuringElement(ElementShape.Rectangle, new Size(3, 3), new Point(2, 2));
+                CvInvoke.MorphologyEx(imgOut, imgOut, MorphOp.Erode, element, default(Point), 1, BorderType.Constant, new MCvScalar(0, 0));
+                CvInvoke.MorphologyEx(imgOut, imgOut, MorphOp.Dilate, element, default(Point), 1, BorderType.Constant, new MCvScalar(0, 0));
+
+                var nucleuses = new VectorOfVectorOfPoint();
+                CvInvoke.FindContours(imgOut, nucleuses, null, RetrType.External, ChainApproxMethod.ChainApproxSimple);
+
+                double nucleusArea = 0D;
+
+                for (var i = 0; i < nucleuses.Size; i++)
+                {
+                    nucleusArea += CvInvoke.ContourArea(nucleuses[i]);
+                }
+
+                var cytoplasmImage = new Mat();
+                CvInvoke.CvtColor(imageWithoutBorder, cytoplasmImage, ColorConversion.Bgr2Gray);
+                CvInvoke.Threshold(cytoplasmImage, cytoplasmImage, 160, 255, ThresholdType.BinaryInv);
+
+                var cytoplasmContours = new VectorOfVectorOfPoint();
+                CvInvoke.FindContours(cytoplasmImage, cytoplasmContours, null, RetrType.List, ChainApproxMethod.ChainApproxSimple);
+                var cytoplasmArea = 0D;
+
+                for (var i = 0; i < cytoplasmContours.Size; i++)
+                {
+                    cytoplasmArea += CvInvoke.ContourArea(cytoplasmContours[i]);
+                }
+
+                var nucleusPercentFromCytoplasm = nucleusArea * 100 / cytoplasmArea;
+
+                var isCircular = IsCircular(nucleuses, imgOut);
+
+                var characteristics = new double[] {
+                    isCircular ? 1 : 0,
+                    nucleuses.Size > 1 ? 1 : 0,
+                    nucleusPercentFromCytoplasm > 70D ? 1 : 0
+                };
+
+                var category = perceptron.Calculate(characteristics) == 1 ? "Neutrófilo" : "Linfócito";
+
+                Console.WriteLine(Path.GetFileName(fileName));
+                Console.WriteLine($"- Circular = {isCircular}");
+                Console.WriteLine($"- Núcleos = {nucleuses.Size}");
+                Console.WriteLine($"- Área ocupada = {nucleusPercentFromCytoplasm}");
+                Console.WriteLine(category);
+                Console.WriteLine();
             }
 
             Console.ReadLine();
         }
 
-        public static void Training()
+        public static UMat ChangeColor(Mat mat, Rgb oldColor, Rgb newColor)
         {
+            var image = mat.ToImage<Rgb, byte>();
+
+            for (int i = 0; i < image.Rows; i++)
+            {
+                for (int j = 0; j < image.Cols; j++)
+                {
+                    var currentColor = image[i, j];
+
+                    //if (currentColor.Blue == oldColor.Blue && currentColor.Green == oldColor.Green && currentColor.Red == oldColor.Red)
+                    if (currentColor.Equals(oldColor))
+                    {
+                        image[i, j] = newColor;
+                    }
+                }
+            }
+
+            return image.ToUMat();
         }
+
+        public static bool IsCircular(VectorOfVectorOfPoint nucleuses, Mat image)
+        {
+            if (nucleuses.Size > 1)
+            {
+                return false;
+            }
+
+            var nucleus = new VectorOfVectorOfPoint(nucleuses[0]);
+            var nucleusImage = image.Clone();
+
+            CvInvoke.Threshold(nucleusImage, nucleusImage, 254, 255, ThresholdType.BinaryInv);
+            CvInvoke.DrawContours(nucleusImage, nucleus, -1, new MCvScalar(0, 0, 255), -1);
+
+            var circles = CvInvoke.HoughCircles(nucleusImage, HoughType.Gradient, 10, 100, 100, 120);
+
+            return circles.Length > 0;
+        }
+
+        public static Perceptron TrainingPerceptron()
+        {
+            var inputs = new double[,] { { 1, 0, 1 }, { 0, 1, 0 } };
+            var outputs = new[] { 0, 1 };
+
+            return new PerceptronTraining(inputs, outputs).Trained();
+        }
+
+        //public static void TestPerceptron()
+        //{
+        //    var inputs = new double[,] { { 1, 0, 1 }, { 0, 1, 0 } };
+        //    var outputs = new[] { 0, 1 };
+
+        //    var training = new PerceptronTraining(inputs, outputs);
+        //    var weights = training.Weigths();
+
+        //    foreach (var weight in weights)
+        //    {
+        //        Console.WriteLine($"Weight: {weight}");
+        //    }
+
+        //    var perceptron = new Perceptron(weights);
+
+        //    for (int i = 0; i < inputs.GetLength(0); i++)
+        //    {
+        //        var row = inputs.GetRow(i);
+        //        Console.WriteLine(perceptron.Calculate(row));
+        //    }
+
+        //    Console.WriteLine("Fim...");
+        //    Console.ReadLine();
+        //}
     }
 
     public class Perceptron
@@ -62,6 +186,11 @@ namespace Paradox
         {
             this.Inputs = inputs;
             this.Outputs = outputs;
+        }
+
+        public Perceptron Trained()
+        {
+            return new Perceptron(this.Weigths());
         }
 
         public double[] Weigths()
