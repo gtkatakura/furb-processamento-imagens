@@ -11,6 +11,9 @@ using System.IO;
 using Emgu.CV.Util;
 using Emgu.CV.Features2D;
 
+// Author: Alesson Ricardo Bernardo
+// Author: Gabriel Takashi Katakura
+// Author: Ivan Manoel da Silva Filho
 namespace Paradox
 {
     public class Program
